@@ -1,0 +1,1 @@
+﻿c:/DVKN-CNNT/lab2/fit4110-lab2-b-pair10-access-core/openapi.yaml:668:15 warning oas3-unused-component "Potentially unused component has been detected." https://meta.stoplight.io/docs/spectral/docs/reference/openapi-rules.md#oas3-unused-component

@@ -1,33 +1,47 @@
 openapi: 3.1.0
 info:
-  title: Smart Campus — Lab 02 Contract Template
+  title: Smart Campus — Core Business Service API
   version: 1.0.0
   description: |
-    Hợp đồng API mẫu cho Lab 02.
-    Sinh viên cần sửa lại title, description, path, schema và example theo cặp đàm phán thực tế.
+    Hợp đồng API cho dịch vụ xử lý nghiệp vụ trung tâm (Core Business) — Product B, Nhóm 12.
+
+    Core Business là Provider cung cấp API kiểm tra policy ra/vào cho Access Gate service.
+    Đàm phán theo pair-10: Access Gate (Consumer) → Core Business (Provider).
+
+    ## Tính năng chính
+    - Kiểm tra quyền ra/vào realtime (POST /access/check)
+    - Tra cứu policy truy cập (GET /policies/access/{policyId})
+    - Tra cứu lịch sử quyết định (GET /decisions, GET /decisions/{decisionId})
+    - Health check (GET /health)
   contact:
-    name: FIT4110 Teaching Team
-    email: fit4110@example.edu.vn
+    name: Nhóm 12 — FIT4110
+    email: nhom12@example.edu.vn
+
 servers:
   - url: http://localhost:4010
     description: Prism mock server
-  - url: https://api.campus.local
+  - url: https://api.campus.local/core-business
     description: Class network placeholder
+
 tags:
   - name: health
     description: Kiểm tra trạng thái service
-  - name: alerts
-    description: Quản lý cảnh báo Smart Campus
-  - name: events
-    description: Quản lý sự kiện nghiệp vụ
+  - name: access-check
+    description: Kiểm tra quyền ra/vào realtime cho Access Gate
+  - name: policies
+    description: Quản lý policy truy cập campus
+  - name: decisions
+    description: Lịch sử quyết định truy cập
+
 security:
   - bearerAuth: []
+
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Kiểm tra trạng thái service
-      description: Endpoint kiểm tra service còn hoạt động.
+      description: Endpoint kiểm tra Core Business service còn hoạt động. Không yêu cầu authentication.
       tags: [health]
       security: []
       responses:
@@ -41,56 +55,68 @@ paths:
                 ok:
                   value:
                     status: ok
-                    service: lab02-contract-template
-                    time: '2026-05-10T08:00:00Z'
+                    service: core-business
+                    time: '2026-05-19T08:00:00Z'
 
-  /alerts:
+  /access/check:
     post:
-      operationId: createAlert
-      summary: Tạo cảnh báo mới
+      operationId: checkAccess
+      summary: Kiểm tra quyền ra/vào realtime
       description: |
-        Endpoint mẫu để Provider nhận yêu cầu tạo cảnh báo từ Consumer.
-        Sinh viên cần sửa theo cặp đàm phán thực tế.
-      tags: [alerts]
+        Access Gate gọi endpoint này để kiểm tra policy trước khi mở cổng.
+        Response trả về quyết định ALLOW hoặc DENY kèm thông tin policy.
+        Yêu cầu response nhanh (dưới 200ms) để tránh kẹt cổng.
+      tags: [access-check]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateAlertRequest'
+              $ref: '#/components/schemas/AccessCheckRequest'
             examples:
-              unauthorizedAccess:
+              normalEntry:
+                summary: Quẹt thẻ vào cổng chính
                 value:
-                  sourceService: core-business
-                  alertType: UNAUTHORIZED_ACCESS
-                  severity: HIGH
-                  message: Phát hiện truy cập trái phép tại cổng chính
-                  relatedEventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                  cardId: RFID-2026-001
+                  gateId: GATE-01
+                  direction: IN
+                  timestamp: '2026-05-19T08:00:00Z'
+              exitRequest:
+                summary: Quẹt thẻ ra cổng phụ
+                value:
+                  cardId: RFID-2026-002
+                  gateId: GATE-02
+                  direction: OUT
+                  timestamp: '2026-05-19T17:30:00Z'
       responses:
-        '201':
-          description: Cảnh báo đã được tạo
-          headers:
-            Location:
-              description: URI của alert vừa tạo.
-              schema:
-                type: string
-                format: uri
+        '200':
+          description: Kết quả kiểm tra quyền truy cập
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Alert'
+                $ref: '#/components/schemas/AccessCheckResponse'
               examples:
-                created:
+                allowed:
+                  summary: Được phép vào
                   value:
-                    id: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-                    sourceService: core-business
-                    alertType: UNAUTHORIZED_ACCESS
-                    severity: HIGH
-                    message: Phát hiện truy cập trái phép tại cổng chính
-                    relatedEventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-                    status: OPEN
-                    createdAt: '2026-05-10T08:00:00Z'
-                    resolvedAt: null
+                    decision: ALLOW
+                    decisionId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                    cardId: RFID-2026-001
+                    gateId: GATE-01
+                    policyId: POL-001
+                    reasonCode: VALID_CARD
+                    expiresAt: '2026-12-31T23:59:59Z'
+                    checkedAt: '2026-05-19T08:00:00Z'
+                denied:
+                  summary: Bị từ chối — thẻ hết hạn
+                  value:
+                    decision: DENY
+                    decisionId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babd
+                    cardId: RFID-2026-003
+                    gateId: GATE-01
+                    reasonCode: CARD_EXPIRED
+                    reasonDetail: Thẻ đã hết hạn từ 2026-01-01
+                    checkedAt: '2026-05-19T08:01:00Z'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -100,99 +126,38 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /policies/access/{policyId}:
     get:
-      operationId: listAlerts
-      summary: Lấy danh sách cảnh báo
-      description: Lấy danh sách cảnh báo với cursor-based pagination.
-      tags: [alerts]
+      operationId: getAccessPolicy
+      summary: Lấy chi tiết policy ra/vào
+      description: |
+        Lấy thông tin chi tiết một access policy theo ID.
+        Access Gate có thể cache policy nếu expiresAt chưa đến.
+      tags: [policies]
       parameters:
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/PolicyId'
       responses:
         '200':
-          description: Danh sách cảnh báo
+          description: Chi tiết policy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AlertPage'
+                $ref: '#/components/schemas/AccessPolicy'
               examples:
-                firstPage:
+                activePolicy:
                   value:
-                    items:
-                      - id: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-                        sourceService: core-business
-                        alertType: UNAUTHORIZED_ACCESS
-                        severity: HIGH
-                        message: Phát hiện truy cập trái phép tại cổng chính
-                        relatedEventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-                        status: OPEN
-                        createdAt: '2026-05-10T08:00:00Z'
-                        resolvedAt: null
-                    nextCursor: null
-                    hasMore: false
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /alerts/recent:
-    get:
-      operationId: getRecentAlerts
-      summary: Lấy các cảnh báo gần đây
-      description: Endpoint mẫu cho cặp Analytics ↔ Core Business hoặc Frontend ↔ Core Business.
-      tags: [alerts]
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          description: Số cảnh báo tối đa cần lấy.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-      responses:
-        '200':
-          description: Danh sách cảnh báo gần đây
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    minItems: 0
-                    maxItems: 100
-                    items:
-                      $ref: '#/components/schemas/Alert'
-              examples:
-                recentAlerts:
-                  value:
-                    items: []
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /alerts/{alertId}:
-    get:
-      operationId: getAlertById
-      summary: Lấy chi tiết một cảnh báo
-      description: Lấy chi tiết alert theo UUID.
-      tags: [alerts]
-      parameters:
-        - $ref: '#/components/parameters/AlertId'
-      responses:
-        '200':
-          description: Chi tiết cảnh báo
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Alert'
+                    policyId: POL-001
+                    name: Giờ hành chính — Nhân viên
+                    description: Cho phép nhân viên ra vào trong giờ hành chính
+                    scope: EMPLOYEE
+                    allowedTimeStart: '07:00'
+                    allowedTimeEnd: '18:00'
+                    allowedDays: [MON, TUE, WED, THU, FRI]
+                    status: ACTIVE
+                    priority: 10
+                    createdAt: '2026-01-01T00:00:00Z'
+                    updatedAt: '2026-03-15T10:30:00Z'
+                    expiresAt: null
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -200,69 +165,75 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /events:
-    post:
-      operationId: createCampusEvent
-      summary: Gửi sự kiện nghiệp vụ vào hệ thống
-      description: |
-        Endpoint minh họa polymorphism. Event có thể là SensorEvent hoặc AccessEvent.
-      tags: [events]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CampusEvent'
-            examples:
-              sensorEvent:
-                value:
-                  eventType: SENSOR_READING
-                  eventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-                  deviceId: SENSOR-001
-                  metric: temperature
-                  value: 38.5
-                  unit: celsius
-                  timestamp: '2026-05-10T08:00:00Z'
-              accessEvent:
-                value:
-                  eventType: ACCESS_CHECK
-                  eventId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babd
-                  gateId: GATE-01
-                  cardId: RFID-2026-001
-                  decision: ALLOW
-                  timestamp: '2026-05-10T08:01:00Z'
+  /decisions/{decisionId}:
+    get:
+      operationId: getDecisionById
+      summary: Lấy chi tiết một quyết định truy cập
+      description: Lấy thông tin chi tiết quyết định truy cập theo UUID để audit hoặc tra cứu.
+      tags: [decisions]
+      parameters:
+        - $ref: '#/components/parameters/DecisionId'
       responses:
-        '201':
-          description: Event đã được ghi nhận
+        '200':
+          description: Chi tiết quyết định
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EventAccepted'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                $ref: '#/components/schemas/DecisionRecord'
+              examples:
+                allowRecord:
+                  value:
+                    decisionId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                    decision: ALLOW
+                    cardId: RFID-2026-001
+                    gateId: GATE-01
+                    direction: IN
+                    policyId: POL-001
+                    reasonCode: VALID_CARD
+                    reasonDetail: null
+                    checkedAt: '2026-05-19T08:00:00Z'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
-webhooks:
-  alertCreated:
-    post:
-      operationId: onAlertCreated
-      summary: Webhook khi có alert mới
-      description: Provider phát sự kiện khi một cảnh báo mới được tạo.
-      tags: [alerts]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Alert'
+  /decisions:
+    get:
+      operationId: listDecisions
+      summary: Lấy danh sách quyết định truy cập
+      description: Lấy danh sách quyết định truy cập gần đây với cursor-based pagination.
+      tags: [decisions]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
       responses:
         '200':
-          description: Consumer đã nhận webhook
+          description: Danh sách quyết định
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionPage'
+              examples:
+                firstPage:
+                  value:
+                    items:
+                      - decisionId: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+                        decision: ALLOW
+                        cardId: RFID-2026-001
+                        gateId: GATE-01
+                        direction: IN
+                        policyId: POL-001
+                        reasonCode: VALID_CARD
+                        reasonDetail: null
+                        checkedAt: '2026-05-19T08:00:00Z'
+                    nextCursor: null
+                    hasMore: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -272,11 +243,20 @@ components:
       bearerFormat: JWT
 
   parameters:
-    AlertId:
-      name: alertId
+    PolicyId:
+      name: policyId
       in: path
       required: true
-      description: UUID của cảnh báo.
+      description: Mã định danh policy truy cập.
+      schema:
+        type: string
+        pattern: '^POL-[0-9]{3}$'
+        example: POL-001
+    DecisionId:
+      name: decisionId
+      in: path
+      required: true
+      description: UUID của quyết định truy cập.
       schema:
         type: string
         format: uuid
@@ -316,79 +296,267 @@ components:
           minLength: 2
           maxLength: 80
           description: Tên service.
-          example: lab02-contract-template
+          example: core-business
         time:
           type: string
           format: date-time
           description: Thời điểm kiểm tra.
-          example: '2026-05-10T08:00:00Z'
+          example: '2026-05-19T08:00:00Z'
 
-    CreateAlertRequest:
+    AccessCheckRequest:
       type: object
       additionalProperties: false
-      required: [sourceService, alertType, severity, message]
+      required: [cardId, gateId, direction, timestamp]
       properties:
-        sourceService:
+        cardId:
+          type: string
+          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
+          description: Mã thẻ RFID của người quẹt.
+          example: RFID-2026-001
+        gateId:
+          type: string
+          pattern: '^GATE-[0-9]{2}$'
+          description: Mã cổng quẹt thẻ.
+          example: GATE-01
+        direction:
+          $ref: '#/components/schemas/Direction'
+        timestamp:
+          type: string
+          format: date-time
+          description: Thời điểm quẹt thẻ tại gate.
+          example: '2026-05-19T08:00:00Z'
+
+    Direction:
+      type: string
+      enum: [IN, OUT]
+      description: Hướng ra/vào cổng.
+      example: IN
+
+    AccessCheckResponse:
+      oneOf:
+        - $ref: '#/components/schemas/AllowDecision'
+        - $ref: '#/components/schemas/DenyDecision'
+      discriminator:
+        propertyName: decision
+        mapping:
+          ALLOW: '#/components/schemas/AllowDecision'
+          DENY: '#/components/schemas/DenyDecision'
+
+    AllowDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, decisionId, cardId, gateId, policyId, reasonCode, expiresAt, checkedAt]
+      properties:
+        decision:
+          type: string
+          const: ALLOW
+          description: Quyết định cho phép truy cập.
+          example: ALLOW
+        decisionId:
+          type: string
+          format: uuid
+          description: UUID định danh quyết định.
+          example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+        cardId:
+          type: string
+          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
+          description: Mã thẻ RFID.
+          example: RFID-2026-001
+        gateId:
+          type: string
+          pattern: '^GATE-[0-9]{2}$'
+          description: Mã cổng.
+          example: GATE-01
+        policyId:
+          type: string
+          pattern: '^POL-[0-9]{3}$'
+          description: Policy đã match.
+          example: POL-001
+        reasonCode:
+          type: string
+          enum: [VALID_CARD, VIP_ACCESS, MANUAL_OVERRIDE]
+          description: Lý do cho phép.
+          example: VALID_CARD
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: Thời điểm policy hết hiệu lực, null nếu vĩnh viễn.
+          example: '2026-12-31T23:59:59Z'
+        checkedAt:
+          type: string
+          format: date-time
+          description: Thời điểm Core Business xử lý.
+          example: '2026-05-19T08:00:00Z'
+
+    DenyDecision:
+      type: object
+      additionalProperties: false
+      required: [decision, decisionId, cardId, gateId, reasonCode, reasonDetail, checkedAt]
+      properties:
+        decision:
+          type: string
+          const: DENY
+          description: Quyết định từ chối truy cập.
+          example: DENY
+        decisionId:
+          type: string
+          format: uuid
+          description: UUID định danh quyết định.
+          example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babd
+        cardId:
+          type: string
+          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
+          description: Mã thẻ RFID.
+          example: RFID-2026-003
+        gateId:
+          type: string
+          pattern: '^GATE-[0-9]{2}$'
+          description: Mã cổng.
+          example: GATE-01
+        reasonCode:
+          type: string
+          enum: [CARD_EXPIRED, CARD_BLOCKED, OUTSIDE_HOURS, NO_POLICY, UNKNOWN_CARD, PASSBACK_VIOLATION]
+          description: Mã lý do từ chối.
+          example: CARD_EXPIRED
+        reasonDetail:
+          type: [string, 'null']
+          maxLength: 500
+          description: Mô tả chi tiết lý do từ chối, null nếu không có thêm thông tin.
+          example: Thẻ đã hết hạn từ 2026-01-01
+        checkedAt:
+          type: string
+          format: date-time
+          description: Thời điểm Core Business xử lý.
+          example: '2026-05-19T08:01:00Z'
+
+    AccessPolicy:
+      type: object
+      additionalProperties: false
+      required: [policyId, name, scope, allowedTimeStart, allowedTimeEnd, allowedDays, status, priority, createdAt, updatedAt, expiresAt]
+      properties:
+        policyId:
+          type: string
+          pattern: '^POL-[0-9]{3}$'
+          description: Mã policy.
+          example: POL-001
+        name:
+          type: string
+          minLength: 3
+          maxLength: 120
+          description: Tên policy.
+          example: Giờ hành chính — Nhân viên
+        description:
+          type: [string, 'null']
+          maxLength: 500
+          description: Mô tả chi tiết policy, null nếu chưa có.
+          example: Cho phép nhân viên ra vào trong giờ hành chính
+        scope:
+          $ref: '#/components/schemas/PolicyScope'
+        allowedTimeStart:
+          type: string
+          pattern: '^[0-2][0-9]:[0-5][0-9]$'
+          description: Giờ bắt đầu được phép (HH:mm).
+          example: '07:00'
+        allowedTimeEnd:
+          type: string
+          pattern: '^[0-2][0-9]:[0-5][0-9]$'
+          description: Giờ kết thúc được phép (HH:mm).
+          example: '18:00'
+        allowedDays:
+          type: array
+          minItems: 1
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/DayOfWeek'
+          description: Các ngày trong tuần được phép.
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, EXPIRED]
+          description: Trạng thái policy.
+          example: ACTIVE
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Độ ưu tiên policy (1 cao nhất).
+          example: 10
+        createdAt:
+          type: string
+          format: date-time
+          description: Thời điểm tạo policy.
+          example: '2026-01-01T00:00:00Z'
+        updatedAt:
+          type: [string, 'null']
+          format: date-time
+          description: Thời điểm cập nhật gần nhất, null nếu chưa cập nhật.
+          example: '2026-03-15T10:30:00Z'
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: Thời điểm hết hạn, null nếu vĩnh viễn.
+          example: null
+
+    PolicyScope:
+      type: string
+      enum: [EMPLOYEE, STUDENT, VISITOR, VIP, ALL]
+      description: Đối tượng áp dụng policy.
+      example: EMPLOYEE
+
+    DayOfWeek:
+      type: string
+      enum: [MON, TUE, WED, THU, FRI, SAT, SUN]
+      description: Ngày trong tuần.
+      example: MON
+
+    DecisionRecord:
+      type: object
+      additionalProperties: false
+      required: [decisionId, decision, cardId, gateId, direction, policyId, reasonCode, reasonDetail, checkedAt]
+      properties:
+        decisionId:
+          type: string
+          format: uuid
+          description: UUID định danh quyết định.
+          example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+        decision:
+          type: string
+          enum: [ALLOW, DENY]
+          description: Quyết định truy cập.
+          example: ALLOW
+        cardId:
+          type: string
+          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
+          description: Mã thẻ RFID.
+          example: RFID-2026-001
+        gateId:
+          type: string
+          pattern: '^GATE-[0-9]{2}$'
+          description: Mã cổng.
+          example: GATE-01
+        direction:
+          $ref: '#/components/schemas/Direction'
+        policyId:
+          type: [string, 'null']
+          description: Policy đã áp dụng, null nếu không tìm thấy policy.
+          example: POL-001
+        reasonCode:
           type: string
           minLength: 2
-          maxLength: 80
-          pattern: '^[a-z0-9-]+$'
-          description: Service tạo alert.
-          example: core-business
-        alertType:
-          type: string
-          enum: [UNAUTHORIZED_ACCESS, SENSOR_THRESHOLD_EXCEEDED, UNKNOWN_PERSON, SYSTEM_ERROR]
-          description: Loại cảnh báo.
-          example: UNAUTHORIZED_ACCESS
-        severity:
-          $ref: '#/components/schemas/AlertSeverity'
-        message:
-          type: string
-          minLength: 5
-          maxLength: 500
-          description: Nội dung cảnh báo.
-          example: Phát hiện truy cập trái phép tại cổng chính
-        relatedEventId:
+          maxLength: 50
+          description: Mã lý do quyết định.
+          example: VALID_CARD
+        reasonDetail:
           type: [string, 'null']
-          format: uuid
-          description: Event liên quan, có thể null nếu chưa có event id.
-          example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
+          maxLength: 500
+          description: Mô tả chi tiết lý do, null nếu không có.
+          example: null
+        checkedAt:
+          type: string
+          format: date-time
+          description: Thời điểm xử lý.
+          example: '2026-05-19T08:00:00Z'
 
-    Alert:
-      allOf:
-        - $ref: '#/components/schemas/CreateAlertRequest'
-        - type: object
-          additionalProperties: false
-          required: [id, status, createdAt, resolvedAt]
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: UUID của alert.
-              example: 0196fb3d-4ad7-7d1e-9f49-5d5148d2babc
-            status:
-              type: string
-              enum: [OPEN, ACKNOWLEDGED, RESOLVED]
-              description: Trạng thái xử lý alert.
-              example: OPEN
-            createdAt:
-              type: string
-              format: date-time
-              description: Thời điểm tạo alert.
-              example: '2026-05-10T08:00:00Z'
-            resolvedAt:
-              type: [string, 'null']
-              format: date-time
-              description: Thời điểm xử lý xong, null nếu chưa xử lý.
-              example: null
-
-    AlertSeverity:
-      type: string
-      enum: [LOW, MEDIUM, HIGH, CRITICAL]
-      description: Mức độ nghiêm trọng của cảnh báo.
-      example: HIGH
-
-    AlertPage:
+    DecisionPage:
       type: object
       additionalProperties: false
       required: [items, nextCursor, hasMore]
@@ -398,7 +566,7 @@ components:
           minItems: 0
           maxItems: 100
           items:
-            $ref: '#/components/schemas/Alert'
+            $ref: '#/components/schemas/DecisionRecord'
         nextCursor:
           type: [string, 'null']
           description: Cursor trang tiếp theo, null nếu hết dữ liệu.
@@ -407,105 +575,6 @@ components:
           type: boolean
           description: Còn dữ liệu ở trang sau hay không.
           example: false
-
-    CampusEvent:
-      oneOf:
-        - $ref: '#/components/schemas/SensorEvent'
-        - $ref: '#/components/schemas/AccessEvent'
-      discriminator:
-        propertyName: eventType
-        mapping:
-          SENSOR_READING: '#/components/schemas/SensorEvent'
-          ACCESS_CHECK: '#/components/schemas/AccessEvent'
-
-    SensorEvent:
-      type: object
-      additionalProperties: false
-      required: [eventType, eventId, deviceId, metric, value, unit, timestamp]
-      properties:
-        eventType:
-          type: string
-          const: SENSOR_READING
-          description: Loại event.
-          example: SENSOR_READING
-        eventId:
-          type: string
-          format: uuid
-          description: UUID của event.
-        deviceId:
-          type: string
-          pattern: '^SENSOR-[0-9]{3}$'
-          description: Mã thiết bị cảm biến.
-          example: SENSOR-001
-        metric:
-          type: string
-          enum: [temperature, humidity, smoke, motion]
-          description: Loại chỉ số cảm biến.
-          example: temperature
-        value:
-          type: number
-          minimum: -100
-          maximum: 1000
-          description: Giá trị đo được.
-          example: 38.5
-        unit:
-          type: string
-          minLength: 1
-          maxLength: 20
-          description: Đơn vị đo.
-          example: celsius
-        timestamp:
-          type: string
-          format: date-time
-          description: Thời điểm đo.
-
-    AccessEvent:
-      type: object
-      additionalProperties: false
-      required: [eventType, eventId, gateId, cardId, decision, timestamp]
-      properties:
-        eventType:
-          type: string
-          const: ACCESS_CHECK
-          description: Loại event.
-          example: ACCESS_CHECK
-        eventId:
-          type: string
-          format: uuid
-          description: UUID của event.
-        gateId:
-          type: string
-          pattern: '^GATE-[0-9]{2}$'
-          description: Mã cổng.
-          example: GATE-01
-        cardId:
-          type: string
-          pattern: '^RFID-[0-9]{4}-[0-9]{3}$'
-          description: Mã thẻ RFID.
-          example: RFID-2026-001
-        decision:
-          type: string
-          enum: [ALLOW, DENY]
-          description: Quyết định truy cập.
-          example: ALLOW
-        timestamp:
-          type: string
-          format: date-time
-          description: Thời điểm kiểm tra.
-
-    EventAccepted:
-      type: object
-      additionalProperties: false
-      required: [eventId, acceptedAt]
-      properties:
-        eventId:
-          type: string
-          format: uuid
-          description: UUID của event được nhận.
-        acceptedAt:
-          type: string
-          format: date-time
-          description: Thời điểm hệ thống ghi nhận event.
 
     Problem:
       type: object
@@ -533,12 +602,12 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Mô tả chi tiết lỗi.
-          example: Field cardId không đúng định dạng
+          example: Field cardId không đúng định dạng RFID-YYYY-NNN
         instance:
           type: [string, 'null']
           format: uri
           description: URI của request gây lỗi.
-          example: /alerts
+          example: https://api.campus.local/core-business/access/check
         errors:
           type: array
           minItems: 0
@@ -576,11 +645,11 @@ components:
             title: Dữ liệu không hợp lệ
             status: 400
             detail: Payload không đúng JSON Schema
-            instance: /alerts
+            instance: https://api.campus.local/core-business/access/check
             errors:
-              - field: alertType
-                code: ENUM_MISMATCH
-                message: alertType không nằm trong danh sách cho phép
+              - field: cardId
+                code: PATTERN_MISMATCH
+                message: cardId phải có dạng RFID-YYYY-NNN
 
     Unauthorized:
       description: Thiếu hoặc sai thông tin xác thực
@@ -593,7 +662,7 @@ components:
             title: Chưa xác thực
             status: 401
             detail: Thiếu Bearer token
-            instance: /alerts/recent
+            instance: https://api.campus.local/core-business/access/check
             errors: []
 
     Forbidden:
@@ -609,13 +678,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-
-    Conflict:
-      description: Xung đột nghiệp vụ hoặc trùng idempotency key
-      content:
-        application/problem+json:
-          schema:
-            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://campus.local/errors/not-found
+            title: Không tìm thấy
+            status: 404
+            detail: Resource không tồn tại với ID đã cung cấp
+            instance: https://api.campus.local/core-business/decisions/00000000-0000-0000-0000-000000000000
+            errors: []
 
     UnprocessableEntity:
       description: Payload đúng định dạng nhưng không hợp lệ về nghiệp vụ
@@ -623,6 +692,16 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+          example:
+            type: https://campus.local/errors/business-rule
+            title: Vi phạm quy tắc nghiệp vụ
+            status: 422
+            detail: Timestamp quẹt thẻ nằm trong tương lai
+            instance: https://api.campus.local/core-business/access/check
+            errors:
+              - field: timestamp
+                code: FUTURE_TIMESTAMP
+                message: Timestamp không được nằm trong tương lai
 
     InternalServerError:
       description: Lỗi không mong muốn phía server
@@ -630,3 +709,10 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
+          example:
+            type: https://campus.local/errors/internal
+            title: Lỗi hệ thống
+            status: 500
+            detail: Đã xảy ra lỗi không mong muốn, vui lòng thử lại sau
+            instance: https://api.campus.local/core-business/access/check
+            errors: []
